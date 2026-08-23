@@ -177,6 +177,8 @@ export const DEFAULT_SETTINGS = {
     enableCalendarDock: true, // 侧边栏：日历视图
     enableCalendarTopBar: false, // 顶栏：日历视图
     enableMobileTaskShortcut: true, // 手机端显示任务快捷按钮（不包含平板端）
+    mobileTaskShortcutBadgeMode: 'separate', // 手机端快捷按钮徽标：merged | separate
+    mobileTaskShortcutPosition: 'right', // 手机端快捷按钮默认停靠位置：right | left
     // 停靠栏徽章显示控制
     enableDockBadge: true, // 是否在停靠栏显示数字徽章
     // 单独控制每个侧栏是否显示徽章（优先级高于 enableDockBadge）
@@ -393,6 +395,9 @@ export default class ReminderPlugin extends Plugin {
 
     // 缓存上一次的番茄钟设置，用于比较变更
     private lastPomodoroSettings: any = null;
+    // 思源会在插件代码变更后先广播 reloadPlugin，再调用旧实例 onunload。
+    // 仅这种重载保留独立番茄钟；用户禁用/卸载时仍正常关闭。
+    private preserveStandalonePomodoroOnUnload: boolean = false;
 
     private reminderDataCache: any = null;
     private projectDataCache: any = null;
@@ -1887,6 +1892,9 @@ export default class ReminderPlugin extends Plugin {
         if (settings.mobileTaskShortcutPosition !== 'left' && settings.mobileTaskShortcutPosition !== 'right') {
             settings.mobileTaskShortcutPosition = 'right';
         }
+        if (settings.mobileTaskShortcutBadgeMode !== 'merged' && settings.mobileTaskShortcutBadgeMode !== 'separate') {
+            settings.mobileTaskShortcutBadgeMode = 'separate';
+        }
         settings.reminderWebhookEnabled = settings.reminderWebhookEnabled === true;
         settings.reminderWebhookUrl = typeof settings.reminderWebhookUrl === 'string'
             ? settings.reminderWebhookUrl.trim()
@@ -2599,6 +2607,13 @@ export default class ReminderPlugin extends Plugin {
         this.addCleanup(() => window.removeEventListener('reminderUpdated', onReminderUpdated));
 
         const onWsMain = (event: CustomEvent) => {
+            if (event.detail?.cmd === 'reloadPlugin') {
+                const reloadPlugins = event.detail?.data?.reloadPlugins;
+                this.preserveStandalonePomodoroOnUnload =
+                    Array.isArray(reloadPlugins) && reloadPlugins.includes(this.name);
+                return;
+            }
+
             if (event.detail?.cmd !== 'setAppearance') return;
             window.dispatchEvent(new CustomEvent('reminderUpdated', {
                 detail: {
@@ -2701,11 +2716,11 @@ export default class ReminderPlugin extends Plugin {
             // 使用 ReminderTaskLogic 的统一逻辑计算今日任务数（包括今日和逾期）
             const { ReminderTaskLogic } = await import("./utils/reminderTaskLogic");
             const uncompletedCount = await ReminderTaskLogic.getTaskCountByTabs(this, ['today', 'overdue'], true);
-            this.mobileTaskShortcut?.setBadge(uncompletedCount);
+            this.mobileTaskShortcut?.setTaskCount(uncompletedCount);
             this.setDockBadge(uncompletedCount);
         } catch (error) {
             console.error('更新徽章失败:', error);
-            this.mobileTaskShortcut?.setBadge(0);
+            this.mobileTaskShortcut?.setTaskCount(0);
             this.setDockBadge(0);
         }
     }
@@ -2788,6 +2803,7 @@ export default class ReminderPlugin extends Plugin {
             const habitData = await this.loadHabitData();
 
             if (!habitData || typeof habitData !== 'object') {
+                this.mobileTaskShortcut?.setHabitCount(0);
                 this.setHabitDockBadge(0);
                 return;
             }
@@ -2800,9 +2816,12 @@ export default class ReminderPlugin extends Plugin {
                 }
             });
 
-            this.setHabitDockBadge(buckets.pendingHabits.length);
+            const pendingHabitCount = buckets.pendingHabits.length;
+            this.mobileTaskShortcut?.setHabitCount(pendingHabitCount);
+            this.setHabitDockBadge(pendingHabitCount);
         } catch (error) {
             console.error('更新习惯徽章失败:', error);
+            this.mobileTaskShortcut?.setHabitCount(0);
             this.setHabitDockBadge(0);
         }
     }
@@ -5847,7 +5866,10 @@ export default class ReminderPlugin extends Plugin {
 
         // 清理全局番茄钟管理器
         const pomodoroManager = PomodoroManager.getInstance();
-        pomodoroManager.cleanup();
+        const preservedStandalonePomodoro = pomodoroManager.cleanup(this.preserveStandalonePomodoroOnUnload);
+        if (preservedStandalonePomodoro) {
+            console.log('插件代码重载：独立番茄钟窗口已保留，等待新实例接管');
+        }
 
         // 清理所有Tab视图实例
         this.tabViews.forEach((view) => {

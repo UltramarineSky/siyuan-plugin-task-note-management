@@ -10,6 +10,7 @@ const POSITION_STORAGE_KEY = "siyuan-task-shortcut-pos";
 
 type TabId = "task" | "project" | "habit" | "calendar";
 type DockState = "left" | "right" | null;
+type BadgeMode = "merged" | "separate";
 
 interface SavedPosition {
     left: number;
@@ -27,12 +28,16 @@ export class MobileTaskShortcut {
     private plugin: ReminderPlugin;
     private button: HTMLElement | null = null;
     private badge: HTMLElement | null = null;
+    private habitBadge: HTMLElement | null = null;
     private dialog: Dialog | null = null;
     private dragging = false;
     private longPressTimer: number | null = null;
     private dragOffset = { x: 0, y: 0 };
     private dockState: DockState = "right";
     private lastPositionSetting: string | null = null;
+    private badgeMode: BadgeMode = "separate";
+    private taskCount = 0;
+    private habitCount = 0;
 
     private tabContainers: Map<TabId, HTMLElement> = new Map();
     private panels: Map<TabId, ReminderPanel | ProjectPanel | HabitPanel | CalendarView> = new Map();
@@ -111,7 +116,6 @@ export class MobileTaskShortcut {
 
     private applyDock() {
         const button = this.button;
-        const badge = this.badge;
         if (!button) return;
 
         const rect = button.getBoundingClientRect();
@@ -127,10 +131,7 @@ export class MobileTaskShortcut {
             button.style.bottom = "auto";
             button.classList.add("mobile-task-shortcut--docked-left");
             button.classList.remove("mobile-task-shortcut--docked-right");
-            if (badge) {
-                badge.style.left = "auto";
-                badge.style.right = "-4px";
-            }
+            this.setBadgeHorizontalPosition("right");
         } else if (this.dockState === "right") {
             button.style.left = `${window.innerWidth - btnW / 2}px`;
             button.style.top = `${clampedTop}px`;
@@ -138,17 +139,27 @@ export class MobileTaskShortcut {
             button.style.bottom = "auto";
             button.classList.add("mobile-task-shortcut--docked-right");
             button.classList.remove("mobile-task-shortcut--docked-left");
-            if (badge) {
-                badge.style.left = "-4px";
-                badge.style.right = "auto";
-            }
+            this.setBadgeHorizontalPosition("left");
         } else {
             button.classList.remove("mobile-task-shortcut--docked-left", "mobile-task-shortcut--docked-right");
-            if (badge) {
+            this.setBadgeHorizontalPosition(null);
+        }
+    }
+
+    private setBadgeHorizontalPosition(side: "left" | "right" | null) {
+        [this.badge, this.habitBadge].forEach((badge) => {
+            if (!badge) return;
+            if (side === "left") {
+                badge.style.left = "-4px";
+                badge.style.right = "auto";
+            } else if (side === "right") {
+                badge.style.left = "auto";
+                badge.style.right = "-4px";
+            } else {
                 badge.style.left = "";
                 badge.style.right = "";
             }
-        }
+        });
     }
 
     private snapToEdge() {
@@ -184,11 +195,7 @@ export class MobileTaskShortcut {
             button.style.right = "auto";
         }
         button.classList.remove("mobile-task-shortcut--docked-left", "mobile-task-shortcut--docked-right");
-        const badge = this.badge;
-        if (badge) {
-            badge.style.left = "";
-            badge.style.right = "";
-        }
+        this.setBadgeHorizontalPosition(null);
     }
 
     private ensureButton(settings?: any) {
@@ -203,7 +210,8 @@ export class MobileTaskShortcut {
             <svg class="mobile-task-shortcut__icon" aria-hidden="true">
                 <use xlink:href="#iconTNTodoList"></use>
             </svg>
-            <span class="mobile-task-shortcut__badge"></span>
+            <span class="mobile-task-shortcut__badge mobile-task-shortcut__badge--task"></span>
+            <span class="mobile-task-shortcut__badge mobile-task-shortcut__badge--habit"></span>
         `;
 
         let touchStartPos = { x: 0, y: 0 };
@@ -240,11 +248,7 @@ export class MobileTaskShortcut {
             button.style.bottom = "auto";
             // 拖动时临时完整显示，便于用户定位
             button.classList.remove("mobile-task-shortcut--docked-left", "mobile-task-shortcut--docked-right");
-            const badge = this.badge;
-            if (badge) {
-                badge.style.left = "";
-                badge.style.right = "";
-            }
+            this.setBadgeHorizontalPosition(null);
         };
 
         const endDrag = () => {
@@ -302,9 +306,11 @@ export class MobileTaskShortcut {
 
         document.body.appendChild(button);
         this.button = button;
-        this.badge = button.querySelector(".mobile-task-shortcut__badge") as HTMLElement;
+        this.badge = button.querySelector(".mobile-task-shortcut__badge--task") as HTMLElement;
+        this.habitBadge = button.querySelector(".mobile-task-shortcut__badge--habit") as HTMLElement;
 
         this.restorePosition(settings);
+        this.renderBadges();
     }
 
     private removeButton(destroyDialog: boolean = true) {
@@ -323,6 +329,7 @@ export class MobileTaskShortcut {
         this.button?.remove();
         this.button = null;
         this.badge = null;
+        this.habitBadge = null;
     }
 
     private destroyPanels() {
@@ -504,6 +511,7 @@ export class MobileTaskShortcut {
 
         const prevPosSetting = this.lastPositionSetting;
         const newPosSetting = (resolvedSettings?.mobileTaskShortcutPosition === "left") ? "left" : "right";
+        this.badgeMode = resolvedSettings?.mobileTaskShortcutBadgeMode === "merged" ? "merged" : "separate";
         this.lastPositionSetting = newPosSetting;
 
         if (this.button?.isConnected) {
@@ -522,32 +530,107 @@ export class MobileTaskShortcut {
         await this.refreshBadge();
     }
 
-    /** 设置徽标数字 */
-    setBadge(count: number) {
-        if (!this.badge) return;
+    private normalizeCount(count: number): number {
+        return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    }
+
+    private renderBadge(badge: HTMLElement | null, count: number, title: string) {
+        if (!badge) return;
+        badge.title = title;
+        badge.setAttribute("aria-label", title);
 
         if (count <= 0) {
-            this.badge.textContent = "";
-            this.badge.style.display = "none";
+            badge.textContent = "";
+            badge.style.display = "none";
             return;
         }
 
-        this.badge.textContent = count > 99 ? "99+" : count.toString();
-        this.badge.style.display = "flex";
+        badge.textContent = count > 99 ? "99+" : count.toString();
+        badge.style.display = "flex";
     }
 
-    /** 从任务数据刷新徽标 */
+    private renderBadges() {
+        const taskTitle = i18n("mobileTaskShortcutTaskCount", { count: this.taskCount.toString() }) || `待办任务：${this.taskCount}`;
+        const habitTitle = i18n("mobileTaskShortcutHabitCount", { count: this.habitCount.toString() }) || `待打卡习惯：${this.habitCount}`;
+        const summary = i18n("mobileTaskShortcutCountSummary", {
+            taskCount: this.taskCount.toString(),
+            habitCount: this.habitCount.toString(),
+        }) || `待办任务 ${this.taskCount}，待打卡习惯 ${this.habitCount}`;
+
+        if (this.badgeMode === "separate") {
+            this.renderBadge(this.badge, this.taskCount, taskTitle);
+            this.renderBadge(this.habitBadge, this.habitCount, habitTitle);
+        } else {
+            this.renderBadge(this.badge, this.taskCount + this.habitCount, summary);
+            this.renderBadge(this.habitBadge, 0, habitTitle);
+        }
+
+        if (this.button) {
+            const shortcutTitle = i18n("mobileTaskShortcut") || i18n("taskManagement") || "任务快捷按钮";
+            const accessibleTitle = `${shortcutTitle} · ${summary}`;
+            this.button.classList.toggle("mobile-task-shortcut--badges-separate", this.badgeMode === "separate");
+            this.button.title = accessibleTitle;
+            this.button.setAttribute("aria-label", accessibleTitle);
+        }
+    }
+
+    /** 设置任务徽标数字 */
+    setTaskCount(count: number) {
+        this.taskCount = this.normalizeCount(count);
+        this.renderBadges();
+    }
+
+    /** 设置习惯徽标数字 */
+    setHabitCount(count: number) {
+        this.habitCount = this.normalizeCount(count);
+        this.renderBadges();
+    }
+
+    /** 兼容原有调用：设置任务徽标数字 */
+    setBadge(count: number) {
+        this.setTaskCount(count);
+    }
+
+    /** 从任务与习惯数据刷新徽标 */
     async refreshBadge() {
         if (!this.button) return;
 
-        try {
-            const { ReminderTaskLogic } = await import("../../utils/reminderTaskLogic");
-            const count = await ReminderTaskLogic.getTaskCountByTabs(this.plugin, ["today", "overdue"], true);
-            this.setBadge(count);
-        } catch (error) {
-            console.error("更新手机任务快捷按钮徽标失败:", error);
-            this.setBadge(0);
-        }
+        const taskCountPromise = (async () => {
+            try {
+                const { ReminderTaskLogic } = await import("../../utils/reminderTaskLogic");
+                return await ReminderTaskLogic.getTaskCountByTabs(this.plugin, ["today", "overdue"], true);
+            } catch (error) {
+                console.error("更新手机快捷按钮任务徽标失败:", error);
+                return 0;
+            }
+        })();
+
+        const habitCountPromise = (async () => {
+            try {
+                const [habitData, { getLogicalDateString }, { getTodayHabitBuckets }, { PomodoroRecordManager }] = await Promise.all([
+                    (this.plugin as any).loadHabitData(),
+                    import("../../utils/dateUtils"),
+                    import("../../utils/habitUtils"),
+                    import("../dataManager/pomodoroRecord"),
+                ]);
+                if (!habitData || typeof habitData !== "object") return 0;
+
+                const today = getLogicalDateString();
+                const buckets = getTodayHabitBuckets(Object.values(habitData), today, {
+                    getPomodoroFocusMinutes: (habitId, date) =>
+                        PomodoroRecordManager.getInstance(this.plugin).getEventFocusTime(habitId, date) || 0,
+                });
+                return buckets.pendingHabits.length;
+            } catch (error) {
+                console.error("更新手机快捷按钮习惯徽标失败:", error);
+                return 0;
+            }
+        })();
+
+        const [taskCount, habitCount] = await Promise.all([taskCountPromise, habitCountPromise]);
+        this.taskCount = this.normalizeCount(taskCount);
+        this.habitCount = this.normalizeCount(habitCount);
+        this.renderBadges();
     }
 
     /** 销毁组件 */

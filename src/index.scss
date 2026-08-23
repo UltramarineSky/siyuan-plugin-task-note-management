@@ -1841,6 +1841,12 @@
         left: -4px;
         right: auto;
     }
+
+    &--habit {
+        top: auto;
+        bottom: -4px;
+        background: var(--b3-theme-success, #2e7d32);
+    }
 }
 
 .mobile-task-shortcut-dialog {

@@ -518,6 +518,17 @@
                             description: i18n('enableMobileTaskShortcutDesc'),
                         },
                         {
+                            key: 'mobileTaskShortcutBadgeMode',
+                            value: settings.mobileTaskShortcutBadgeMode || 'separate',
+                            type: 'select',
+                            title: i18n('mobileTaskShortcutBadgeMode') || '快捷按钮计数显示方式',
+                            description: i18n('mobileTaskShortcutBadgeModeDesc') || '设置手机端快捷按钮如何显示今日待办任务数与待打卡习惯数',
+                            options: {
+                                merged: i18n('mobileTaskShortcutBadgeMerged') || '合并显示（任务数 + 习惯数）',
+                                separate: i18n('mobileTaskShortcutBadgeSeparate') || '单独显示（任务与习惯两个徽标）',
+                            },
+                        },
+                        {
                             key: 'mobileTaskShortcutPosition',
                             value: settings.mobileTaskShortcutPosition || 'right',
                             type: 'select',
