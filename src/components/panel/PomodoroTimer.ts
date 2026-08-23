@@ -7534,6 +7534,98 @@ export class PomodoroTimer {
         this.pendingSettings = null;
     }
 
+    /**
+     * 插件代码热重载前释放旧实例持有的资源，但保留独立 BrowserWindow。
+     * 新插件实例会通过 recoverOrphanedWindow() 读取窗口内的 localState 并继续计时。
+     */
+    public detachForPluginReload(): boolean {
+        const pomodoroWindow = this.container as any;
+        if (
+            this.isTabMode ||
+            this.isWindowClosed ||
+            !pomodoroWindow ||
+            typeof pomodoroWindow.isDestroyed !== 'function' ||
+            pomodoroWindow.isDestroyed()
+        ) {
+            return false;
+        }
+
+        try {
+            // 先把旧实例的精确状态推送到独立窗口，供新实例恢复。
+            this.updateBrowserWindowDisplay(pomodoroWindow);
+
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            if (this.autoTransitionTimer) {
+                clearTimeout(this.autoTransitionTimer);
+                this.autoTransitionTimer = null;
+            }
+            if (this.volumeSyncTimeout) {
+                clearTimeout(this.volumeSyncTimeout);
+                this.volumeSyncTimeout = null;
+            }
+            if (this.volumeSaveTimeout) {
+                clearTimeout(this.volumeSaveTimeout);
+                this.volumeSaveTimeout = null;
+            }
+            if (this.switchMenuHideTimer) {
+                clearTimeout(this.switchMenuHideTimer);
+                this.switchMenuHideTimer = null;
+            }
+
+            this.stopRandomRestTimer();
+            this.detachAudioUnlockListeners();
+
+            if (this.domResizeListener) {
+                window.removeEventListener('resize', this.domResizeListener);
+                this.domResizeListener = null;
+            }
+
+            // 独立窗口完全由本类创建和管理。移除旧实例闭包，避免热重载后继续持有整棵旧插件对象。
+            for (const eventName of ['focus', 'always-on-top-changed', 'moved', 'closed', 'destroyed']) {
+                pomodoroWindow.removeAllListeners(eventName);
+            }
+
+            // 清除旧实例的 IPC 回调。恢复流程会为同一窗口重新绑定到新实例。
+            try {
+                const electronReq = (window as any).require;
+                const remote = electronReq?.('@electron/remote') || electronReq?.('electron')?.remote;
+                const ipcMain = remote?.ipcMain;
+                if (ipcMain) {
+                    ipcMain.removeAllListeners(`pomodoro-action-${pomodoroWindow.id}`);
+                    ipcMain.removeAllListeners(`pomodoro-control-${pomodoroWindow.id}`);
+                    ipcMain.removeAllListeners(`pomodoro-mouse-${pomodoroWindow.id}`);
+                }
+            } catch (error) {
+                console.warn('[PomodoroTimer] 清理旧实例 IPC 监听器失败:', error);
+            }
+
+            if (PomodoroTimer.browserWindowTimer === this) {
+                PomodoroTimer.browserWindowTimer = null;
+            }
+            if (PomodoroTimer.browserWindowInstance === pomodoroWindow) {
+                PomodoroTimer.browserWindowInstance = null;
+            }
+
+            // BrowserWindow 内的背景音频独立运行；这里只释放旧主窗口实例自己的音频资源。
+            if (this.audioCtx) {
+                void this.audioCtx.close().catch(() => { });
+                this.audioCtx = null;
+            }
+            this.audioBuffers.clear();
+            this.activeSources.clear();
+
+            this.pendingSettings = null;
+            console.log('[PomodoroTimer] 插件代码重载：已释放旧实例并保留独立窗口');
+            return true;
+        } catch (error) {
+            console.warn('[PomodoroTimer] 为插件重载保留独立窗口失败:', error);
+            return false;
+        }
+    }
+
     destroy() {
         this.isWindowClosed = true; // 标记窗口已关闭
         this.close();
@@ -9242,7 +9334,7 @@ document.body.classList.remove('docked-mode');
                         pomodoroWindow.minimize();
                         break;
                     case 'close':
-                        pomodoroWindow.destroy();
+                        void this.handleClose();
                         break;
                     case 'toggleMiniMode':
                         this.toggleBrowserWindowMiniMode(pomodoroWindow);
@@ -9281,22 +9373,67 @@ document.body.classList.remove('docked-mode');
                         } catch (e) { }
                     }
                 });
+
+                // 恢复孤儿窗口后也要把移动位置写回新实例，避免继续引用旧插件实例。
+                pomodoroWindow.removeAllListeners('moved');
+                pomodoroWindow.on('moved', () => {
+                    if (!pomodoroWindow || pomodoroWindow.isDestroyed() || this.isDocked) return;
+                    try {
+                        const bounds = pomodoroWindow.getBounds();
+                        if (this.isMiniMode) {
+                            this.miniWindowBounds = {
+                                x: bounds.x,
+                                y: bounds.y,
+                                width: bounds.width,
+                                height: bounds.height
+                            };
+                        } else {
+                            this.normalWindowBounds = {
+                                x: bounds.x,
+                                y: bounds.y,
+                                width: 240,
+                                height: 235
+                            };
+                        }
+                    } catch (e) { }
+                });
             } catch (err) {
-                console.warn('[PomodoroTimer] Failed to register window focus/always-on-top listeners in registerIPCListeners:', err);
+                console.warn('[PomodoroTimer] Failed to register window state listeners in registerIPCListeners:', err);
             }
 
             ipcMain.on(actionChannel, actionHandler);
             ipcMain.on(controlChannel, controlHandler);
 
-            // Clean up on close
-            pomodoroWindow.once('closed', () => {
+            // 恢复后的窗口关闭时，清理的必须是新实例，而不是重载前的旧实例。
+            let windowDisposed = false;
+            const handleWindowDisposed = () => {
+                if (windowDisposed) return;
+                windowDisposed = true;
+
                 ipcMain.removeListener(actionChannel, actionHandler);
                 ipcMain.removeListener(controlChannel, controlHandler);
-            });
-            pomodoroWindow.once('destroyed', () => {
-                ipcMain.removeListener(actionChannel, actionHandler);
-                ipcMain.removeListener(controlChannel, controlHandler);
-            });
+                if (PomodoroTimer.browserWindowInstance === pomodoroWindow) {
+                    PomodoroTimer.browserWindowInstance = null;
+                }
+                if (PomodoroTimer.browserWindowTimer === this) {
+                    PomodoroTimer.browserWindowTimer = null;
+                }
+
+                this.isWindowClosed = true;
+                this.stopAllAudio();
+                this.stopRandomRestTimer();
+                if (this.timer) {
+                    clearInterval(this.timer);
+                    this.timer = null;
+                }
+                if (this.autoTransitionTimer) {
+                    clearTimeout(this.autoTransitionTimer);
+                    this.autoTransitionTimer = null;
+                }
+                this.detachAudioUnlockListeners();
+            };
+            pomodoroWindow.once('closed', handleWindowDisposed);
+            pomodoroWindow.once('destroyed', handleWindowDisposed);
 
             // 在吸附模式下启用鼠标可以穿透透明区域（仅进度条响应鼠标）
             // FIX: 恢复孤儿窗口时也需要设置鼠标穿透

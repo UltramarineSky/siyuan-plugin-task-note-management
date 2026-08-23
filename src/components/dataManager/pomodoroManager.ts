@@ -123,10 +123,28 @@ export class PomodoroManager {
 
     /**
      * 清理所有资源（在插件卸载时调用）
+     * @param preserveStandaloneWindow 插件代码重载时保留独立窗口，交给新插件实例接管
+     * @returns 是否成功保留了独立番茄钟窗口
      */
-    public cleanup(): void {
-        this.destroyCurrentTimer();
+    public cleanup(preserveStandaloneWindow: boolean = false): boolean {
+        let preserved = false;
+
+        if (preserveStandaloneWindow && this.currentPomodoroTimer) {
+            try {
+                preserved = this.currentPomodoroTimer.detachForPluginReload();
+            } catch (error) {
+                console.warn('为插件重载保留番茄钟窗口失败，将按普通卸载清理:', error);
+            }
+        }
+
+        if (preserved) {
+            this.currentPomodoroTimer = null;
+        } else {
+            this.destroyCurrentTimer();
+        }
+
         PomodoroManager.instance = null;
+        return preserved;
     }
 
     /**
