@@ -7566,10 +7566,6 @@ export class PomodoroTimer {
                 clearTimeout(this.volumeSyncTimeout);
                 this.volumeSyncTimeout = null;
             }
-            if (this.volumeSaveTimeout) {
-                clearTimeout(this.volumeSaveTimeout);
-                this.volumeSaveTimeout = null;
-            }
             if (this.switchMenuHideTimer) {
                 clearTimeout(this.switchMenuHideTimer);
                 this.switchMenuHideTimer = null;
