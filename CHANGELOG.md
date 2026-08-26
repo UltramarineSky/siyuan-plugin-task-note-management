@@ -1,4 +1,8 @@
+## v7.0.14 / 20260826
+- 🐛 浏览器端无法使用webhook
+
 ## v7.0.13 / 20260823
+
 - 🎨 移动端快捷按钮支持设置在左侧还是右侧
 - 🎨 手机端快捷按钮支持显示习惯数，支持设置是否与任务数合并还是单独显示
 - 🎨 mcp：新增任务提醒功能 [#348](https://github.com/Achuan-2/siyuan-plugin-task-note-management/issues/348)
