@@ -35,7 +35,7 @@ import { ProjectKanbanView } from "./components/panel/ProjectKanbanView";
 import { PomodoroManager } from "./components/dataManager/pomodoroManager";
 import SettingPanelComponent from "./SettingPanel.svelte";
 import { exportIcsFile } from "./utils/icsExport";
-import { getFile, sendNotification, cancelNotification, pushErrMsg, pushMsg, isInMobileApp, batchUpdateTaskListItemMarker, isTaskListLikeBlock, type TaskListItemMarker } from "./api";
+import { getFile, sendNotification, cancelNotification, pushErrMsg, pushMsg, isInMobileApp, batchUpdateTaskListItemMarker, isTaskListLikeBlock, forwardProxy, type TaskListItemMarker } from "./api";
 import { resolveAudioPath, playTaskCompleteSound as playTaskCompleteSoundUtil, playNotificationSound as playNotificationSoundUtil, getNotificationSound as getNotificationSoundUtil } from "./utils/audioUtils";
 import { showVipDialog } from "./components/vip/VipDialog";
 import { performDataMigration } from "./components/dataManager/dataMigration";
@@ -2211,6 +2211,48 @@ export default class ReminderPlugin extends Plugin {
         }
     }
 
+    private async sendWebhookRequest(url: string, payload: any): Promise<void> {
+        const timeoutMs = 8000;
+
+        if (getFrontend().startsWith('browser')) {
+            const response = await forwardProxy(
+                url,
+                'POST',
+                JSON.stringify(payload),
+                [{ 'Content-Type': 'application/json' }],
+                timeoutMs,
+                'application/json'
+            );
+
+            if (!response || typeof response.status !== 'number') {
+                throw new Error('Webhook proxy request failed');
+            }
+            if (response.status < 200 || response.status >= 300) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } finally {
+            window.clearTimeout(timeout);
+        }
+    }
+
     private async sendReminderWebhookNotification(
         title: string,
         message: string,
@@ -2238,24 +2280,7 @@ export default class ReminderPlugin extends Plugin {
             );
             if (!payload) return;
 
-            const controller = new AbortController();
-            const timeout = window.setTimeout(() => controller.abort(), 8000);
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(payload),
-                    signal: controller.signal,
-                });
-
-                if (!response.ok) {
-                    console.warn(`Webhook 通知发送失败: HTTP ${response.status}`);
-                }
-            } finally {
-                window.clearTimeout(timeout);
-            }
+            await this.sendWebhookRequest(url, payload);
         } catch (error) {
             console.warn('Webhook 通知发送失败:', error);
         }
@@ -2284,26 +2309,8 @@ export default class ReminderPlugin extends Plugin {
                 throw new Error('Payload generation failed (invalid template)');
             }
 
-            const controller = new AbortController();
-            const timeout = window.setTimeout(() => controller.abort(), 8000);
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(payload),
-                    signal: controller.signal,
-                });
-
-                if (!response.ok) {
-                    console.warn(`Webhook 测试发送失败: HTTP ${response.status}`);
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                return true;
-            } finally {
-                window.clearTimeout(timeout);
-            }
+            await this.sendWebhookRequest(url, payload);
+            return true;
         } catch (error: any) {
             console.error('Webhook test error:', error);
             throw error;
