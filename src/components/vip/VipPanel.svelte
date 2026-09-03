@@ -59,6 +59,7 @@
     let paymentErrorMessage = '';
     let isCheckingStatus = false;
     let paymentAmountStr = '';
+    let checkoutUrl = '';
 
     async function manualCheckStatus() {
         if (!outTradeNo || isCheckingStatus) return;
@@ -95,6 +96,7 @@
         paymentErrorMessage = '';
         outTradeNo = '';
         paymentAmountStr = '';
+        checkoutUrl = '';
     }
 
     async function handlePay() {
@@ -107,6 +109,7 @@
         paymentStatusMessage = i18n('vipCreatingOrder');
         paymentErrorMessage = '';
         qrcodeImg = '';
+        checkoutUrl = '';
 
         try {
             const response = await fetch(`${API_PREFIX}/api/create-payment`, {
@@ -115,15 +118,22 @@
                 body: JSON.stringify({
                     userId: userId,
                     term: selectedTerm,
+                    paymentProvider: isZhCN ? 'zpay' : 'waffo',
                 }),
             });
 
             const result = await response.json();
             if (result.success) {
-                qrcodeImg = result.img;
                 outTradeNo = result.out_trade_no;
-                paymentStatusMessage = i18n('vipQrcodeGenerated');
                 paymentAmountStr = result.money || '';
+                if (result.checkout_url) {
+                    checkoutUrl = result.checkout_url;
+                    window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+                    paymentStatusMessage = i18n('vipWaffoCheckoutOpened');
+                } else {
+                    qrcodeImg = result.img;
+                    paymentStatusMessage = i18n('vipQrcodeGenerated');
+                }
             } else {
                 paymentStatusMessage = '';
                 paymentErrorMessage = result.message || i18n('vipCreateOrderFailed');
@@ -133,6 +143,12 @@
             paymentStatusMessage = '';
             paymentErrorMessage = i18n('vipExceptionOccurred');
             isPaying = false;
+        }
+    }
+
+    function reopenCheckout() {
+        if (checkoutUrl) {
+            window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         }
     }
 
@@ -502,27 +518,20 @@
                     {i18n('vipDiscountNotice2')}
                 </p>
                 <p class="contribution-reward">{i18n('vipContributionRewardDesc')}</p>
-                {#if isZhCN || selectedTerm === '7d'}
-                    <button
-                        class="b3-button b3-button--text pay-btn"
-                        disabled={userId === 'unknown' || isPaying}
-                        on:click={handlePay}
-                    >
-                        {selectedTerm === '7d'
-                            ? i18n('vipGetTrialKeyBtn')
-                            : i18n('vipPayToGetKeyBtn')}
-                    </button>
-                {/if}
                 {#if !isZhCN && selectedTerm !== '7d'}
                     <div class="overseas-notice">
-                        <p>{i18n('vipOverseasTransferNotice')}</p>
-                        <img
-                            src="plugins/siyuan-plugin-task-note-management/assets/Alipay.jpg"
-                            alt="Payment QR"
-                            class="overseas-qr"
-                        />
+                        <p>{i18n('vipWaffoPaymentNotice')}</p>
                     </div>
                 {/if}
+                <button
+                    class="b3-button b3-button--text pay-btn"
+                    disabled={userId === 'unknown' || isPaying}
+                    on:click={handlePay}
+                >
+                    {selectedTerm === '7d'
+                        ? i18n('vipGetTrialKeyBtn')
+                        : i18n('vipPayToGetKeyBtn')}
+                </button>
             </div>
 
             {#if qrcodeImg}
@@ -538,6 +547,36 @@
                         <p class="payment-status error-text">{paymentErrorMessage}</p>
                     {/if}
                     <div class="payment-actions">
+                        <button
+                            class="b3-button b3-button--outline manual-check-btn"
+                            on:click={manualCheckStatus}
+                            disabled={isCheckingStatus}
+                        >
+                            {isCheckingStatus ? i18n('vipChecking') : i18n('vipManualCheckBtn')}
+                        </button>
+                        <button
+                            class="b3-button b3-button--outline cancel-btn"
+                            on:click={handleCancel}
+                        >
+                            {i18n('vipCancel')}
+                        </button>
+                    </div>
+                </div>
+            {:else if checkoutUrl && outTradeNo}
+                <div class="payment-qrcode">
+                    {#if paymentStatusMessage}
+                        <p class="payment-status">{paymentStatusMessage}</p>
+                    {/if}
+                    {#if paymentErrorMessage}
+                        <p class="payment-status error-text">{paymentErrorMessage}</p>
+                    {/if}
+                    <div class="payment-actions">
+                        <button
+                            class="b3-button b3-button--outline"
+                            on:click={reopenCheckout}
+                        >
+                            {i18n('vipReopenCheckout')}
+                        </button>
                         <button
                             class="b3-button b3-button--outline manual-check-btn"
                             on:click={manualCheckStatus}
@@ -667,11 +706,6 @@
     }
     .overseas-notice p {
         margin-bottom: 8px;
-    }
-    .overseas-qr {
-        display: block;
-        margin: 0 auto;
-        border-radius: 4px;
     }
     .payment-amount {
         font-size: 28px;
