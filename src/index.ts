@@ -200,6 +200,7 @@ export const DEFAULT_SETTINGS = {
     calendarShowHoliday: true, // 是否显示节假日
     calendarShowPomodoro: true, // 是否显示番茄专注时间
     calendarAlwaysShowHabitReminderTime: false, // 日历视图是否始终显示习惯提醒时间
+    calendarShowHabitCheckInTime: false, // 日历视图是否显示习惯打卡时间
     showCalendarEventCheckbox: true, // 是否显示日历事件前的复选框
     calendarHolidayIcsUrl: 'https://www.shuyz.com/githubfiles/china-holiday-calender/master/holidayCal.ics?token=cb429c2a-81a6-4c26-8f35-4f4bf0c84b2c&compStart=*&compEnd=*', // 节假日ICS URL
     calendarMultiDaysCount: 3, // 多天视图默认显示天数
