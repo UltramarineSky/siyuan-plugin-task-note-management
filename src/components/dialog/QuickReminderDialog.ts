@@ -7359,6 +7359,7 @@ export class QuickReminderDialog {
                 docId: optimisticDocId || null,
                 title: title,
                 url: url,
+                note: note,
                 date: date,
                 time: time,
                 endDate: endDate,
