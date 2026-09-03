@@ -1,9 +1,10 @@
 import { svelteDialog } from "../../libs/dialog";
+import { i18n } from "../../pluginInstance";
 import VipPanel from "./VipPanel.svelte";
 
 export const showVipDialog = (plugin: any) => {
     const { component, dialog } = svelteDialog({
-        title: "任务笔记管理插件订阅",
+        title: i18n("vipDialogTitle"),
         width: "500px",
         constructor: (item) => {
             return new VipPanel({

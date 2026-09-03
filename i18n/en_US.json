@@ -1524,6 +1524,7 @@
     "show": "Show",
     "instances": "incomplete instances",
     "noLimit": "means no limit",
+    "vipDialogTitle": "Task Note Management Subscription",
     "vipSubscriptionInfo": "Subscription Info",
     "vipLifetimeMember": "Lifetime Member",
     "vipStartedFrom": "Started from ",
