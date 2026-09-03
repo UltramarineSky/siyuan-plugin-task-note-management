@@ -1,3 +1,18 @@
+## v7.0.15 / 20260903
+- 🎨 日历视图: 支持不显示习惯实际打卡时间
+- 🎨 国外用户接入Waffo Pancake支付
+- 🐛 修复项目看板新建任务，同时填写任务备注，任务备注没有被保存，需要重新编辑再填写备注
+- 🐛 番茄钟有时候工作声音没有响
+- 🌐 i18n 优化
+
+---
+- 🎨 Calendar view: supports hiding the actual habit check-in time
+- 🎨 Integrated Waffo Pancake payment for overseas users
+- 🐛 Fixed issue where task remarks entered when creating a task on the project board were not saved, requiring editing again to fill in remarks
+- 🐛 Fixed issue where the Pomodoro timer's work sound sometimes did not play
+- 🌐 i18n optimization
+
+
 ## v7.0.14 / 20260826
 - 🐛 浏览器端无法使用webhook
 
