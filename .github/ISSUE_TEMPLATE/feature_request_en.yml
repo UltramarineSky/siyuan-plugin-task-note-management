@@ -19,6 +19,14 @@ body:
       options:
         - label: I have searched existing Issues
           required: true
+  - type: checkboxes
+    attributes:
+      label: Does this Issue contain only one suggestion?
+      description: |
+        Each Issue should contain only one feature request. If you have multiple suggestions, please submit separate Issues.
+      options:
+        - label: This Issue contains only one feature request
+          required: true
   - type: textarea
     attributes:
       label: Use Case (Required)

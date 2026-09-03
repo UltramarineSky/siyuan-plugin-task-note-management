@@ -19,6 +19,14 @@ body:
           required: true
   - type: checkboxes
     attributes:
+      label: Does this Issue contain only one problem?
+      description: |
+        Each Issue should report only one bug. If you have multiple problems, please submit separate Issues.
+      options:
+        - label: This Issue contains only one bug
+          required: true
+  - type: checkboxes
+    attributes:
       label: Can this be reproduced in the default theme (light/dark)?
       description: |
         Please confirm if the issue can be reproduced under the default theme, which helps to troubleshoot theme-related issues.

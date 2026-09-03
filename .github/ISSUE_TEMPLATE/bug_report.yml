@@ -19,6 +19,14 @@ body:
           required: true
   - type: checkboxes
     attributes:
+      label: 此 Issue 是否只包含一个问题？
+      description: |
+        一个 Issue 只应报告一个 Bug。如有多个问题，请分别提交 Issue。
+      options:
+        - label: 此 Issue 只包含一个 Bug
+          required: true
+  - type: checkboxes
+    attributes:
       label: 是否能在默认主题（白天/夜间）复现？
       description: |
         请确认该问题是否在默认主题下可复现，便于排查与主题相关的问题。

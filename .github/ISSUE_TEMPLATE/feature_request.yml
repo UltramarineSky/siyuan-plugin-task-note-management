@@ -19,6 +19,14 @@ body:
       options:
         - label: 我已搜索过现有 Issue
           required: true
+  - type: checkboxes
+    attributes:
+      label: 此 Issue 是否只包含一个建议？
+      description: |
+        一个 Issue 只应提出一个功能建议。如有多个建议，请分别提交 Issue。
+      options:
+        - label: 此 Issue 只包含一个功能建议
+          required: true
   - type: textarea
     attributes:
       label: 使用场景（必须）
