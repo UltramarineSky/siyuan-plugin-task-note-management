@@ -75,9 +75,9 @@ export default defineConfig({
         // Auto copy to SiYuan plugins directory
         {
             name: 'auto-copy-to-siyuan',
-            writeBundle() {
+            closeBundle() {
                 try {
-                    // Run the copy script after build, passing the outputDir
+                    // 等静态资源写入完成后再同步，避免 i18n 等文件落后一轮
                     execSync(`node --no-warnings ./scripts/make_dev_copy.js ${outputDir}`, {
                         stdio: 'inherit',
                         cwd: process.cwd()
@@ -133,7 +133,7 @@ export default defineConfig({
                 ] : [
                     // Clean up unnecessary files under dist dir
                     cleanupDistFiles({
-                        patterns: ['i18n/*.yaml', 'i18n/*.md'],
+                        patterns: ['i18n/*.yaml', 'i18n/*.md', 'i18n/en_US.json'],
                         distDir: outputDir
                     }),
                     zipPack({
